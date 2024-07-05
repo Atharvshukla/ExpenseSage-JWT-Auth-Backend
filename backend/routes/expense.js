@@ -3,10 +3,11 @@
 const express = require('express');
 const router = express.Router();
 const expenseController = require('../controllers/expense');
-const authMiddleware = require('../middleware/auth');
+const { isAdmin, requireSignIn } = require("../middleware/auth.js");
 
-router.post('/add', authMiddleware, expenseController.addExpense);
-router.get('/get', authMiddleware, expenseController.getExpenses);
-router.delete('/delete/:id', authMiddleware, expenseController.deleteExpense);
+
+router.post('/add',requireSignIn , expenseController.addExpense);
+router.get('/get', requireSignIn , expenseController.getExpenses);
+router.delete('/delete/:id', requireSignIn , expenseController.deleteExpense);
 
 module.exports = router;

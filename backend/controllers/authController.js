@@ -1,98 +1,170 @@
-const bcrypt = require('bcrypt');
-const jwt = require('jsonwebtoken');
-const { UserModel } = require('../models/UserModel');
+const userModel = require("../models/UserModel.js");
+const { comparePassword, hashPassword } = require("../helper/authHelper.js");
+const JWT = require("jsonwebtoken");
 
-// Register a new user
-const register = async (req, res) => {
-    const { name, email, password } = req.body;
-
-    try {
-        // Check if user already exists
-        const existingUser = await UserModel.findOne({ email });
-        if (existingUser) {
-            return res.status(400).json({ message: 'User already exists' });
-        }
-
-        // Hash password
-        const hashedPassword = await bcrypt.hash(password, 10);
-
-        // Create new user
-        const newUser = new UserModel({
-            name,
-            email,
-            password: hashedPassword,
-        });
-
-        // Save user to database
-        await newUser.save();
-
-        // Generate JWT token
-        const token = generateToken(newUser._id);
-
-        // Respond with token
-        res.status(201).json({ token });
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ message: 'Error creating user' });
+const registerController = async (req, res) => {
+  try {
+    const { name, email, password, phone, address, answer } = req.body;
+    //validations
+    if (!name) {
+      return res.send({ error: "Name is Required" });
     }
+    if (!email) {
+      return res.send({ message: "Email is Required" });
+    }
+    if (!password) {
+      return res.send({ message: "Password is Required" });
+    }
+    if (!phone) {
+      return res.send({ message: "Phone no is Required" });
+    }
+    if (!address) {
+      return res.send({ message: "Address is Required" });
+    }
+    if (!answer) {
+      return res.send({ message: "Answer is Required" });
+    }
+    //check user
+    const exisitingUser = await userModel.findOne({ email });
+    //exisiting user
+    if (exisitingUser) {
+      return res.status(200).send({
+        success: false,
+        message: "Already Register please login",
+      });
+    }
+    //register user
+    const hashedPassword = await hashPassword(password);
+    //save
+    const user = await new userModel({
+      name,
+      email,
+      phone,
+      address,
+      password: hashedPassword,
+      answer,
+    }).save();
+
+    res.status(201).send({
+      success: true,
+      message: "User Register Successfully",
+      user,
+    });
+  } catch (error) {
+    console.log(error);
+    res.status(500).send({
+      success: false,
+      message: "Error in Registration",
+      error,
+    });
+  }
 };
 
-// Login existing user
-const login = async (req, res) => {
+//POST LOGIN
+const loginController = async (req, res) => {
+  try {
     const { email, password } = req.body;
-
-    try {
-        // Find user by email
-        const user = await UserModel.findOne({ email });
-        if (!user) {
-            return res.status(400).json({ message: 'User not found' });
-        }
-
-        // Verify password
-        const isPasswordValid = await bcrypt.compare(password, user.password);
-        if (!isPasswordValid) {
-            return res.status(400).json({ message: 'Invalid password' });
-        }
-
-        // Generate JWT token
-        const token = generateToken(user._id);
-
-        // Respond with token
-        res.status(200).json({ token });
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ message: 'Error logging in' });
+    //validation
+    if (!email || !password) {
+      return res.status(404).send({
+        success: false,
+        message: "Invalid email or password",
+      });
     }
+    //check user
+    const user = await userModel.findOne({ email });
+    if (!user) {
+      return res.status(404).send({
+        success: false,
+        message: "Email is not registered",
+      });
+    }
+    const match = await comparePassword(password, user.password);
+    if (!match) {
+      return res.status(200).send({
+        success: false,
+        message: "Invalid Password",
+      });
+    }
+    //token
+    const token = await JWT.sign({ _id: user._id }, process.env.JWT_SECRET, {
+      expiresIn: "10d",
+    });
+    res.status(200).send({
+      success: true,
+      message: "login successfully",
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        address: user.address,
+        role: user.role,
+      },
+      token,
+    });
+  } catch (error) {
+    console.log(error);
+    res.status(500).send({
+      success: false,
+      message: "Error in login",
+      error,
+    });
+  }
 };
 
-// Verify JWT token
-const verifyToken = (req, res, next) => {
-    // Get token from header
-    const token = req.header('Authorization');
+//forgotPasswordController
 
-    // Check if token is present
-    if (!token) {
-        return res.status(401).json({ message: 'No token, authorization denied' });
+const forgotPasswordController = async (req, res) => {
+  try {
+    const { email, answer, newPassword } = req.body;
+    if (!email) {
+      res.status(400).send({ message: "Email is required" });
     }
-
-    try {
-        // Verify token
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        
-        // Attach user information to request object
-        req.user = decoded;
-
-        // Move to the next middleware or route handler
-        next();
-    } catch (error) {
-        // If token is invalid
-        res.status(401).json({ message: 'Token is not valid' });
+    if (!answer) {
+      res.status(400).send({ message: "Answer is required" });
     }
+    if (!newPassword) {
+      res.status(400).send({ message: "New Password is required" });
+    }
+    //check
+    const user = await userModel.findOne({ email, answer });
+    //validation
+    if (!user) {
+      return res.status(404).send({
+        success: false,
+        message: "Wrong Email Or Answer",
+      });
+    }
+    const hashed = await hashPassword(newPassword);
+    await userModel.findByIdAndUpdate(user._id, { password: hashed });
+    res.status(200).send({
+      success: true,
+      message: "Password Reset Successfully",
+    });
+  } catch (error) {
+    console.log(error);
+    res.status(500).send({
+      success: false,
+      message: "Something went wrong",
+      error,
+    });
+  }
 };
 
-// Generate JWT token
-const generateToken = (userId) => {
-    return jwt.sign({ id: userId }, process.env.JWT_SECRET, { expiresIn: '3h' });
+//test controller
+const testController = (req, res) => {
+  try {
+    res.send("Protected Routes");
+  } catch (error) {
+    console.log(error);
+    res.send({ error });
+  }
 };
 
-module.exports = { register, login, verifyToken };
+module.exports = {
+  registerController,
+  loginController,
+  forgotPasswordController,
+  testController,
+};
