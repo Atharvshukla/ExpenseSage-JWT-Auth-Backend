@@ -13,7 +13,8 @@ app.use(express.json())
 app.use(cors())
 
 //routes
-readdirSync('./routes').map((route) => app.use('/api/v1', require('./routes/' + route)))
+app.use("/api/v1/users", require("./routes/auth"));
+app.use("/api/v1/transictions", require("./routes/transiction"));
 
 const server = () => {
     connectDB()
